@@ -1,0 +1,400 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"inlin",
+				"inline-block"
+			],
+			[
+				"list",
+				"list-style-type"
+			],
+			[
+				"font",
+				"font-size"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "index.html",
+			"settings":
+			{
+				"buffer_size": 1149,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "/home/elias/workspace/automated.py",
+			"settings":
+			{
+				"buffer_size": 9728,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"contents": "import pandas.io.sql as psql\nimport MySQLdb, calendar\nimport pandas as pd\nimport numpy as np\nfrom pandas import Series, DataFrame\nfrom datetime import datetime\nfrom collections import Counter\n\nquery = '''SELECT * FROM sales_point_actions AS spa WHERE spa.date BETWEEN '2012-01-01 00:00:00' AND '2012-02-29 23:59:59' \n		AND spa.industry_id = 1 AND spa.action = 'AlphaSignup'\n		AND spa.details NOT IN (\"447\",\"2097\",\"3436\",\"3670\",\"14402\",\"66835\",\"129560\",\"129594\",\"129595\",\"129596\",\"129599\",\n			\"129601\",\"129602\",\"129604\",\"129612\",\"129613\",\"129615\",\"129618\",\"129625\",\"129709\",\"129795\",\"131034\",\"131036\",\n			\"131037\",\"131039\",\"131040\",\"131041\",\"131048\",\"131050\",\"131051\",\"131053\",\"131054\",\"131060\",\"131061\",\"131064\",\n			\"131066\",\"131068\",\"131070\",\"131071\",\"131072\",\"131073\",\"131074\",\"131076\",\"131077\",\"131132\",\"131239\",\"131268\",\n			\"131305\",\"131355\")'''\n\nquery = '''SELECT bc.id, bc.business_id, bc.changeDate, bc.oldValue, bc.newValue\n			FROM business_changes as bc LEFT JOIN sales_point_actions AS spa on spa.details = bc.business_id\n			WHERE bc.virtual = FALSE and bc.location_id IS NULL and bc.affectedField = 'status'\n			and bc.changeDate >= \"2012-01-01 00:00:00\"\n			AND spa.date BETWEEN '2012-01-01 00:00:00' AND '2012-02-29 23:59:59' AND spa.industry_id = 1 \n			AND spa.action = 'AlphaSignup' AND spa.details NOT IN (\"447\",\"2097\",\"3436\",\"3670\",\"14402\",\"66835\",\"129560\",\"129594\",\"129595\",\"129596\",\"129599\",\"129601\",\"129602\",\"129604\",\"129612\",\"129613\",\"129615\",\"129618\",\"129625\",\"129709\",\"129795\",\"131034\",\"131036\",\"131037\",\"131039\",\"131040\",\"131041\",\"131048\",\"131050\",\"131051\",\"131053\",\"131054\",\"131060\",\"131061\",\"131064\",\n			\"131066\",\"131068\",\"131070\",\"131071\",\"131072\",\"131073\",\"131074\",\"131076\",\"131077\",\"131132\",\"131239\",\"131268\",\"131305\",\"131355\")'''\n\npay_query = '''SELECT * FROM \n					(SELECT i.id, i.client_id, \n						IF(inv.id IS NULL, IF(c.id IS NULL, IF(cc.id IS NULL, IF(cp.id IS NULL,\n							IF(bd.id IS NULL, IF(bccr.id is NULL, \"Unknown\", \"CC Refund\"),\n								IF(i.amount > 0, \"Neg Bad Debt\", \"Bad Debt\")), \"Payment\"), \"Payment\"),\n									\"Credit\"), \"Invoice\") AS type, i.amount, i.date\n					FROM billing_Account_items AS i\n					LEFT JOIN billing_invoice_items as inv ON inv.id = i.id\n					LEFT JOIN billing_credits AS c ON c.id = i.id\n					LEFT JOIN billing_credit_card_payments AS cc on cc.id = i.id\n					LEFT JOIN billing_check_payments AS cp ON cp.id = i.id\n					LEFT JOIN billing_bad_debts AS bd ON bd.id = i.id\n					LEFT JOIN billing_credit_card_refunds as bccr ON bccr.id = i.id \n					JOIN sales_point_actions AS spa on spa.details = i.client_id\n					WHERE spa.action = \"AlphaSignup\" AND spa.industry_id = 1 AND spa.date BETWEEN '2012-01-01 00:00:00' AND '2012-02-29 23:59:59' AND spa.action = \"AlphaSignup\" AND spa.details NOT IN (\"447\",\"2097\",\"3436\",\"3670\",\"14402\",\"66835\",\"129560\",\"129594\",\"129595\",\"129596\",\"129599\",\"129601\",\"129602\",\"129604\",\"129612\",\"129613\",\"129615\",\"129618\",\"129625\",\"129709\",\"129795\",\"131034\",\"131036\",\"131037\",\"131039\",\"131040\",\"131041\",\"131048\",\"131050\",\"131051\",\"131053\",\"131054\",\"131060\",\"131061\",\"131064\",\"131066\",\"131068\",\"131070\",\"131071\",\"131072\",\"131073\",\"131074\",\"131076\",\"131077\",\"131132\",\"131239\",\"131268\",\"131305\",\"131355\")) AS balls WHERE balls.date >= \"2012-01-01 00:00:00\" AND balls.type = \"Invoice\" GROUP BY balls.client_id, YEAR(balls.date), MONTH(balls.date)'''\n\nmysql_cn = MySQLdb.connect(host = 'dbtemp.prod.getfelix.com', port = 3306, \n							user = 'ederian', passwd = 'epm0mktn', db = 'alpha')\n\nchanges = psql.frame_query(query, con=mysql_cn)\npayments = psql.frame_query(pay_query, con=mysql_cn)\n\ndef get_signupDates(b_id, entries):\n	dates = []\n	dex = entries.index\n	for i in xrange(0, len(dex)):\n		# only get dates post-2011\n		if entries.changeDate[dex[i]].date() >= datetime(2011,1,1,0,0).date():\n			if entries.oldValue[dex[i]] == 'Inactive' and entries.newValue[dex[i]] == 'Active':\n				if i == 0:\n					dates.append(entries.changeDate[dex[i]])\n				else:\n					# check to see if signup was a result of price change, etc.\n					if entries.changeDate[dex[i-1]].date() == entries.changeDate[dex[i]].date():\n						continue\n					else:\n						# check to see if client reacts within 30 days. if so, associate it with last signup\n						if len(dates) != 0:\n							if (entries.changeDate[dex[i]].date() - entries.changeDate[dex[i-1]].date()).days <= 30:\n								continue\n							else:\n								dates.append(entries.changeDate[dex[i]])\n						else: \n							dates.append(entries.changeDate[dex[i]])\n	item = b_id, dates\n	return item\n\ndef count_invoices(info, dump, paym):\n	# info is a 2-tuple from get_signupDates\n	# dump is a list holding the data\n	dex = paym.index\n	if len(info[1]) == 1:\n		num_inv = 0\n		for i in xrange(0, len(dex)):\n			if paym.date[dex[i]] >= info[1][0]:\n				num_inv += 1\n		dump.append((datetime(info[1][0].year, info[1][0].month, 1).date(), info[1][0].date(), info[0], num_inv))\n	elif len(info[1]) == 0:\n		print info[0]\n	elif len(info[1]) == 2:\n		num_inv1 = 0\n		num_inv2 = 0\n		for i in xrange(0, len(dex)):\n			if info[1][0] <= paym.date[dex[i]] < info[1][1]:\n				num_inv1 += 1\n			if paym.date[dex[i]] >= info[1][1]:\n				num_inv2 += 1\n		dump.append((datetime(info[1][0].year, info[1][0].month, 1).date(), info[1][0].date(), b_id, num_inv1))\n		dump.append((datetime(info[1][1].year, info[1][1].month, 1).date(), info[1][1].date(), b_id, num_inv2))\n	else:\n		for j in xrange(1, len(info[1])):\n			num_inv = 0\n			for i in xrange(0, len(dex)):\n				if info[1][j-1] <= paym.date[dex[i]] < info[1][j]:\n					num_inv += 1\n			dump.append((datetime(info[1][j-1].year, info[1][j-1].month, 1).date(), info[1][j-1].date(), b_id, num_inv))\n		num_inv = 0\n		for i in xrange(0, len(dex)):\n			if paym.date[dex[i]] >= info[1][-1]:\n				num_inv += 1\n		dump.append((datetime(info[1][-1].year, info[1][-1].month, 1).date(), info[1][-1].date(), b_id, num_inv))\n\ndef bin_inv(data, date):\n	balls = []\n	balls.append(date)\n	balls.append(len(data.num_inv[data.yearMon == date]))\n	count = Counter(data.num_inv[data.yearMon == date])\n	for i in xrange(0, num_periods + 2):\n		balls.append(count[i])\n	return balls\n\nb_ids = changes.business_id.drop_duplicates(['business_id'])\nballs = []\nfor b_id in b_ids:\n	bcs = changes[['id', 'changeDate', 'oldValue', 'newValue']][changes.business_id == b_id]\n	signups = get_signupDates(b_id, bcs)\n	paym = payments[payments.client_id == b_id]\n	count_invoices(signups, balls, paym)\n\ndata = DataFrame(data = balls, columns = ['yearMon','signupDate', 'business_id', 'num_inv'])\n\ndates = [datetime(2012,1,1).date(), datetime(2012,2,1).date()]\nnum_periods = (datetime.now().date().year - dates[0].year) * 12 + (datetime.now().date().month - dates[0].month)\n\ncolumns = ['date', 'signups']\nfor i in xrange(0, num_periods + 2):\n	columns.append(i)\n\nbins = []\nfor date in dates:\n	bins.append(bin_inv(data, date))\n\nbinned = DataFrame(data = bins, columns = columns, dtype = 'float64')",
+			"settings":
+			{
+				"buffer_size": 6851,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "/home/elias/workspace/felix/cohort_ltv.py",
+			"settings":
+			{
+				"buffer_size": 3829,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "img_resize.js",
+			"settings":
+			{
+				"buffer_size": 45,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "stylesheet.css",
+			"settings":
+			{
+				"buffer_size": 337,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"command_palette":
+	{
+		"height": 348.0,
+		"selected_items":
+		[
+			[
+				"pack",
+				"Package Control: Install Package"
+			],
+			[
+				"",
+				"Set Syntax: YAML"
+			]
+		],
+		"width": 449.0
+	},
+	"console":
+	{
+		"height": 139.0
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/home/elias/.cache/.fr-1cevOA/discogs_20130103_releases.xml",
+		"/home/elias/.cache/.fr-aIwRnq/discogs_20130101_masters.xml",
+		"/home/elias/workspace/felix/b_id.txt.csv",
+		"/home/elias/workspace/basketball/get_odds.py",
+		"/home/elias/workspace/basketball/games_clean.py",
+		"/home/elias/workspace/scoreboard/script.js",
+		"/home/elias/workspace/webpage/stylesheet.css",
+		"/home/elias/workspace/webpage/page.html",
+		"/media/elias/KINGSTON/dec_cancels.csv",
+		"/media/elias/KINGSTON/visualization/closePCT_byTime/leftoff.txt",
+		"/media/elias/KINGSTON/visualization/calls/index.html",
+		"/media/elias/KINGSTON/visualization/closePCT_byTime/index.html",
+		"/home/elias/.config/sublime-text-2/Packages/Package Control/Package Control.sublime-settings"
+	],
+	"find":
+	{
+		"height": 0.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"\n \n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			"\n\n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			"import\n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			",\n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			"    \n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			" \n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			"\n \n\n\n\n\n\n\n\n\"447\"\n	\n",
+			"\n\n\n\n\n\n\n\n\"447\"\n	\n",
+			"\n\n\n\n\n\n\n\n\n	\n",
+			"\n\n\n\n\n\n\n\n\n",
+			"\n",
+			"</ul>",
+			"</li>",
+			"<li>",
+			"<ul>",
+			"75px",
+			"\n			",
+			"				<",
+			"\\N"
+		],
+		"highlight": true,
+		"in_selection": true,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+			"",
+			"NULL"
+		],
+		"reverse": true,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 1,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "index.html",
+					"settings":
+					{
+						"buffer_size": 1149,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								683,
+								683
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/HTML/HTML.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "/home/elias/workspace/automated.py",
+					"settings":
+					{
+						"buffer_size": 9728,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								7278,
+								7278
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 2487.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"settings":
+					{
+						"buffer_size": 6851,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								4491,
+								4491
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"translate_tabs_to_spaces": false,
+							"word_wrap": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "/home/elias/workspace/felix/cohort_ltv.py",
+					"settings":
+					{
+						"buffer_size": 3829,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1068,
+								1068
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Python/Python.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 4,
+					"file": "img_resize.js",
+					"settings":
+					{
+						"buffer_size": 45,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/JavaScript/JavaScript.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 5,
+					"file": "stylesheet.css",
+					"settings":
+					{
+						"buffer_size": 337,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								334,
+								334
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/CSS/CSS.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 0.0
+	},
+	"input":
+	{
+		"height": 31.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"replace":
+	{
+		"height": 64.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+			[
+				"",
+				"stylesheet.css"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"show_minimap": true,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 152.0,
+	"status_bar_visible": true
+}
